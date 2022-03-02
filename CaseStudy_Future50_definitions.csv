@@ -1,0 +1,10 @@
+Metric,Description
+Rank,Position in ranking
+Restaurant,Name of restaurant
+Location,Location of the origin of the restaurant
+Sales,2019 Systemwide Sales ($000000)
+YOY_Sales,Year on year sales increase in %
+Units,Number of premises
+YOY_Units,Year on year premises increase in %
+Unit_Volume,Average Unit Volume ($000)
+Franchising,Is this restaurant a franchise? (Y/N)
