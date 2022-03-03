@@ -1,0 +1,307 @@
+---
+title: "Future50 Case Study"
+author: "Josh Yednock"
+date: "3/1/2022"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+# knitr::opts_chunk$set(dev = 'pdf')
+
+# Referencing packages I will be using -------------
+
+if(!require(tidyverse)) install.packages("tidyverse", repos = "http://cran.us.r-project.org")
+if(!require(dplyr)) install.packages("dplyr", repos = "http://cran.us.r-project.org")
+if(!require(readxl)) install.packages("readxl", repos = "http://cran.us.r-project.org")
+if(!require(usmap)) install.packages("usmap", repos = "http://cran.us.r-project.org")
+if(!require(ggplot2)) install.packages("ggplot2", repos = "http://cran.us.r-project.org")
+if(!require(recipes)) install.packages("recipies", repos = "http://cran.us.r-project.org")
+if(!require(forecast)) install.packages("forecast", repos = "http://cran.us.r-project.org")
+if(!require(caret)) install.packages("caret", repos = "http://cran.us.r-project.org")
+if(!require(scales)) install.packages("scales", repos = "http://cran.us.r-project.org")
+if(!require(knitr)) install.packages("knitr", repos = "http://cran.us.r-project.org")
+if(!require(vip)) install.packages("vip", repos = "http://cran.us.r-project.org")
+if(!require(readxl)) install.packages("readxl", repos = "http://cran.us.r-project.org")
+if(!require(GGally)) install.packages("GGally", repos = "http://cran.us.r-project.org")
+if(!require(plotly)) install.packages("plotly", repos = "http://cran.us.r-project.org")
+if(!require(maps)) install.packages("maps", repos = "http://cran.us.r-project.org")
+if(!require(mapproj)) install.packages("mapproj", repos = "http://cran.us.r-project.org")
+if(!require(car)) install.packages("car", repos = "http://cran.us.r-project.org")
+if(!require(ggrepel)) install.packages("ggrepel", repos = "http://cran.us.r-project.org")
+if(!require(stargazer)) install.packages("stargazer", repos = "http://cran.us.r-project.org")
+
+# Load in the Future50 dataset & definitions ---------------------
+
+Future50_dat <- read_csv(file = 'https://raw.githubusercontent.com/Jyednock/Future50/main/CaseStudy_Future50_data.csv')
+Future50_def <- read_csv(file = 'https://raw.githubusercontent.com/Jyednock/Future50/main/CaseStudy_Future50_definitions.csv')
+
+
+```
+
+# Executuve Summary
+
+This document presents an analysis of the Future50 dataset downloaded from www.restaurantbusinessonline.com on January 30, 2021. - The data set contains 50 rows and 9 columns. 
+
+The purpose of this document is to provide some key highlights within the data, along with a one-pager report.
+
+## Initial Data Exploration & Insights
+
+The initial data exploration began with analyzing the data set and metric definitions. The first 5 rows of the dataset in addition to the metric definitions are listed below for reference:
+
+```{r include=False}
+Future50_dat %>%
+  head(3)
+```
+
+```{r SummaryTable}
+Future50_dat %>%
+  select(Sales,YOY_Sales,Units,YOY_Units,Unit_Volume) %>%
+  as.data.frame() %>%
+  stargazer(type = "text")
+```
+
+
+
+```{r CorrelationMatrix,include=False,fig.height=6}
+Future50_dat %>%
+  select(Sales,YOY_Sales,Units,YOY_Units,Unit_Volume,Franchising) %>%
+  ggpairs(aes(color = Franchising,fill = Franchising,alpha = .4))+
+  theme(axis.text = element_text(size = 7))
+```
+
+
+
+
+#### Initial Insights
+
+Based upon the dataset, it is apparent the restaurant ranking is based upon the YOY_Sales metric, as defined above. - This can be seen below:
+
+```{r RankVsSalesIncrease,fig.height=5, message=FALSE,warning=FALSE}
+
+# Incorporate gradient from white to green
+
+Future50_dat %>%
+  ggplot(aes(Rank,YOY_Sales))+
+  geom_segment(aes(x = Rank,xend = Rank,y = 0,yend = YOY_Sales))+
+  geom_point()+
+ # geom_bar(stat = "identity",alpha = .4,color = "white",aes(fill = YOY_Sales),show.legend = F)+
+  scale_y_continuous("YOY Sales Increase %",labels = percent)+
+  geom_text(aes(label = ifelse(Rank %in% c(1,25,50),paste(round(100*YOY_Sales,0),"%",sep = ""),NA)),vjust = -.5,size = 3,fontface = 2)+
+  labs(title = "YOY Sales Increase % Vs Restaurant Rank",
+       subtitle = "*Rank determined by YOY_Sales; Ranks 1,25 and 50 are labeled")+
+  theme_minimal()+
+  scale_fill_gradient(low = "#B7FFBF",high = "#00AB08")
+  #theme(panel.grid = element_blank())
+```
+We can see the highest ranked restaurants had some pretty tremendous year on year sales growth compared to the rest. - Why is this? Is there something in the dataset that can explain why restaurants achieved their year on year growth?
+
+
+### YOY Sales Analysis
+
+One of the metrics I wanted to dive into was the Sales percentage increase for 2019. - It might be interesting to find a relationship among the other metrics than can help explain the increase in sales within these restaurants.
+
+```{r YOY Sales Increase,fig.height=4, message=FALSE,warning=FALSE}
+
+
+
+lm_fit <- lm(YOY_Sales ~ YOY_Units,data = Future50_dat)
+lm_outliers <- qqPlot(lm_fit,labels=row.names(Future50_dat), id.method="identify",
+         simulate=TRUE, main="Q-Q Plot")
+
+
+Future50_dat %>%
+  ggplot(aes(YOY_Units,YOY_Sales))+
+  geom_point(aes(color = Franchising),size = 4,alpha = .6)+
+  scale_color_manual(values = c("Yes" = "gold","No" = "dodgerblue"))+
+  theme_minimal()+
+  geom_smooth(method = "lm",formula = y~x,se = F,color = "red",linetype = 2)+
+  geom_text(aes(label = ifelse(Rank %in% lm_outliers,Restaurant,NA)),vjust = -.75)+
+  scale_y_continuous("YOY Sales Increase %",labels = percent)+
+  scale_x_continuous("YOY Premise Increase %",labels = percent)+
+  labs(title = "YOY Sales Increase % Vs YOY Premises Incease %",
+       subtitle = "*Red line represents linear regression line")
+
+
+
+
+```
+
+In general, there is a strong linear relationship between YOY_Units and YOY_Sales. - However, there are two outliers here that may be worth digging into. Playa bowls is over performing and Teriyaki Madness is underperforming considering the YOY_Units.
+
+
+
+### Franchising Patterns
+
+```{r FranchiseAnalysis, fig.height=4,fig.width=6}
+Future50_dat %>%
+  ggplot(aes(Franchising,Sales))+
+  geom_boxplot()+
+  geom_jitter()
+
+Franchise_Count <- Future50_dat %>%
+  group_by(Franchising) %>%
+  summarise(Count = n())
+
+# Franchise Vs Premises---
+
+Future50_dat %>%
+  left_join(Franchise_Count,by = "Franchising") %>%
+  mutate(Count = paste0(Franchising, ' (N = ',Count, ') ')) %>%
+  ggplot(aes(Count,Units))+
+  geom_boxplot(alpha = .8)+
+  geom_jitter(aes(color = Franchising),alpha = .7,size = 2)+
+  labs(title = "Premises Vs Non-Franchised & Franchised Restaurants",
+       x = "Franchising",y = "Premises")+
+  scale_color_manual(values = c("Yes" = "gold","No" = "dodgerblue"))+
+  theme_minimal()
+  #geom_label(aes(data = Franchise_Count,label = Count))
+
+# Franchise Vs Sales---
+
+Future50_dat %>%
+  left_join(Franchise_Count,by = "Franchising") %>%
+  mutate(Count = paste0(Franchising, ' (N = ',Count, ') ')) %>%
+  ggplot(aes(Count,Sales))+
+  geom_boxplot(alpha = .8)+
+  geom_jitter(aes(color = Franchising),alpha = .7,size = 2)+
+  labs(title = "Sales Vs Non-Franchised & Franchised Restaurants",
+       x = "Franchising",y = "Sales (Millions)")+
+  scale_color_manual(values = c("Yes" = "gold","No" = "dodgerblue"))+
+  scale_y_continuous(labels = dollar)+
+  theme_minimal()
+
+# Franchise Vs YOY Unit_Volume---
+
+Future50_dat %>%
+  left_join(Franchise_Count,by = "Franchising") %>%
+  mutate(Count = paste0(Franchising, ' (N = ',Count, ') ')) %>%
+  ggplot(aes(Count,Unit_Volume))+
+  geom_boxplot(alpha = .8)+
+  geom_jitter(aes(color = Franchising),alpha = .7,size = 2)+
+  labs(title = "Average Premise Volume ($000) Vs Non-Franchised & Franchised Restaurants",
+       x = "Franchising",y = "Average Premise Volume ($000)")+
+  scale_color_manual(values = c("Yes" = "gold","No" = "dodgerblue"))+
+  scale_y_continuous(labels = dollar)+
+  theme_minimal()
+
+  
+
+
+```
+
+
+
+
+
+
+```{r AveragePremiseVolume}
+
+
+Future50_dat %>%
+  ggplot(aes(Units,Unit_Volume))+
+ # geom_point(size = 4,alpha = .5)+
+  geom_point(aes(color = Franchising),size = 4,alpha = .5)+
+  scale_color_manual(values = c("Yes" = "gold","No" = "dodgerblue"))+
+  scale_y_continuous(labels = dollar)+
+  labs(title = "Average Premise Volume ($000) Vs Premise Count",
+       subtitle = "*Premise counts range from 7 to 105",
+       x = "Premises",y = "Average Premise Volume ($000)")+
+  theme_minimal()
+```
+There exists a non-linear relationship among premise count and average premise volume.
+
+
+## Metric Engineering
+
+### City & State
+
+After a first glance of the dataset, I can see some new features that may be worth adding here. - One of them being the city and State location of these restaurants. It looks like this information can be extracted from the location metric with a comma delimiter. This may be helpful for geographically analyzing these top retaurants.
+
+After creating city and state metrics, we can see how the top 50 retaurants are distributed across the states:
+
+```{r StateMap,include=FALSE,warning=FALSE,message=FALSE}
+
+Future50_dat <- Future50_dat %>%
+  separate(Location,into = c("City","State"),remove = F,sep = ",")
+
+
+Future50_dat <- Future50_dat %>%
+  mutate(State_abbr = trimws(State),
+         State_abbr = str_replace(State_abbr,'\\.',""),
+         State_abbr = str_sub(State_abbr,start = 1,end = 2),
+         State_abbr = toupper(State_abbr),
+         State_abbr = ifelse(str_detect(State,"Texas"),"TX",
+                             ifelse(str_detect(State,"Ariz"),"AZ",
+                                    ifelse(str_detect(State,"D.C"),"MD",
+                                           ifelse(str_detect(State,"Tenn"),"TN",State_abbr)))))
+
+# TE to TX; AR to AZ; DC to MD; TE to TN
+
+StateCount <- Future50_dat %>%
+  left_join(statepop[,c("abbr","full")],by = c("State_abbr" = "abbr")) %>%
+  group_by(State_abbr,full) %>%
+  summarise(Count = n()) %>%
+  ungroup() %>%
+  mutate(full = tolower(full)) %>%
+  rename(region = full)
+
+
+states <- map_data("state")
+
+
+snames <- data.frame(region=tolower(state.name), long_center=state.center$x, lat_center=state.center$y)
+snames <- snames %>%
+  left_join(StateCount,by = "region")
+  
+
+StateCount %>%
+ # left_join(snames,by = "region") %>%
+  merge(states,by = "region",all.y = T) %>%
+  arrange(order) %>% 
+  ggplot(aes(long,lat,group = group))+
+  geom_polygon(aes(fill = Count))+
+  geom_path()+
+  theme_minimal()+
+  geom_text(data=snames, aes(long_center, lat_center, group = NA,label=Count))+
+  scale_fill_gradientn(colours=rev(heat.colors(10)),na.value="grey90")+
+  coord_map()+
+  labs(title = "State Distribution of Top 50 Ranked Retaurants")+
+  theme(panel.grid = element_blank(),axis.title = element_blank(),axis.text = element_blank())
+  
+
+
+```
+
+What I find interesting in the dataset is that the majority of the most populated states contain at least one of the top 50 retaurants, except for Illinois.
+
+### Previous Year Sales and Units
+
+Adding in the previous year's sales and units, we can do some one-to-one correlation analysis
+
+```{r ExtraVars,include=F}
+
+
+Future50_dat <- Future50_dat %>%
+  mutate(Sales_prevyear = round(Sales/(1+YOY_Sales),0),
+         Units_prevyear = round(Units/(1+YOY_Units),0),
+         Sales_Grwth = Sales - Sales_prevyear,
+         Units_Grwth = Units - Units_prevyear)
+
+Future50_dat %>%
+  ggplot(aes(Sales_prevyear,Sales,color = YOY_Units))+
+  geom_point()
+  
+
+Saleslm <- lm(Sales ~ Sales_prevyear + YOY_Units,data = Future50_dat)
+summary(Saleslm)
+
+
+
+```
+
+
+
+
+
+
